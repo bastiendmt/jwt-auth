@@ -1,0 +1,4 @@
+# Write your query or mutation here
+mutation Register($email: String!, $password: String!) {
+  register(email: $email, password: $password)
+}
