@@ -1,4 +1,5 @@
 import { compare, hash } from "bcryptjs";
+import { verify } from "jsonwebtoken";
 import {
   Arg,
   Ctx,
@@ -21,6 +22,9 @@ import { sendRefreshToken } from "./sendRefreshToken";
 class LoginResponse {
   @Field()
   accessToken: String;
+
+  @Field(() => User)
+  user: User;
 }
 
 @Resolver()
@@ -34,6 +38,25 @@ export class UserResolver {
   @UseMiddleware(isAuth)
   me(@Ctx() { payload }: MyContext) {
     return `your user id is: ${payload!.userId}`;
+  }
+
+  @Query(() => User, { nullable: true })
+  self(@Ctx() context: MyContext) {
+    const authorization = context.req.headers["authorization"];
+
+    if (!authorization) {
+      return null;
+    }
+
+    try {
+      const token = authorization.split(" ")[1];
+      const payload: any = verify(token, process.env.ACCESS_TOKEN_SECRET!);
+      context.payload = payload as any;
+      return User.findOne(payload.userId);
+    } catch (error) {
+      console.log(error);
+      return null;
+    }
   }
 
   @Query(() => [User])
@@ -74,7 +97,7 @@ export class UserResolver {
     const valid = await compare(password, user.password);
 
     if (!valid) {
-      throw new Error("bas password");
+      throw new Error("bad password");
     }
     //login successful
 
@@ -82,6 +105,7 @@ export class UserResolver {
 
     return {
       accessToken: createAccessToken(user),
+      user,
     };
   }
 
@@ -90,6 +114,12 @@ export class UserResolver {
     await getConnection()
       .getRepository(User)
       .increment({ id: userId }, "tokenVersion", 1);
+    return true;
+  }
+
+  @Mutation(() => Boolean)
+  async logout(@Ctx() { res }: MyContext) {
+    sendRefreshToken(res, "");
     return true;
   }
 }
